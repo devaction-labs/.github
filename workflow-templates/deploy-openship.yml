@@ -1,0 +1,50 @@
+name: Deploy to Openship
+
+# Template: fires an Openship "incoming webhook" (Deploy action) after this
+# repo's CI validation jobs succeed on a push to main. Openship builds
+# directly from the repo's own Dockerfile via git-clone, so this workflow
+# does NOT build or push any image — it only tells Openship "this push
+# passed CI, go deploy it."
+#
+# Setup for a new repo:
+#   1. In the Openship project -> Webhooks -> New webhook -> Action: Deploy,
+#      Service: (pick the app service, so it doesn't redeploy sibling
+#      services like a database), Auth: Token. Copy the URL and secret.
+#   2. Add two repo secrets: OPENSHIP_DEPLOY_WEBHOOK_URL, OPENSHIP_DEPLOY_WEBHOOK_TOKEN.
+#   3. Replace VALIDATION_JOB_1 / VALIDATION_JOB_2 below with this repo's
+#      actual CI job names (the ones that must pass before deploying).
+#   4. If those jobs live in this same workflow, keep deploy-openship as a
+#      `needs:` job here (safer default — see note below). If they live in
+#      a separate workflow you don't want to touch, you can switch to a
+#      `workflow_run` trigger instead, BUT: a workflow_run's overall
+#      conclusion is reported as "success" even when every job inside was
+#      skipped (e.g. by a deploy-gate condition) — verified empirically
+#      against nexus_pro's own run history. A `needs:` job in the SAME
+#      workflow as the validation jobs doesn't have that hole: a skipped or
+#      failed dependency skips this job too.
+
+on:
+  push:
+    branches: [$default-branch]
+
+jobs:
+  # ... this repo's own validation jobs go here (lint/test/whatever the
+  # stack uses) ...
+
+  deploy-openship:
+    name: Deploy to Openship
+    needs: [VALIDATION_JOB_1, VALIDATION_JOB_2]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger deploy via Openship webhook
+        env:
+          OPENSHIP_DEPLOY_WEBHOOK_URL: ${{ secrets.OPENSHIP_DEPLOY_WEBHOOK_URL }}
+          OPENSHIP_DEPLOY_WEBHOOK_TOKEN: ${{ secrets.OPENSHIP_DEPLOY_WEBHOOK_TOKEN }}
+        run: |
+          curl --fail --silent --show-error -X POST "$OPENSHIP_DEPLOY_WEBHOOK_URL" \
+              -H "Authorization: Bearer $OPENSHIP_DEPLOY_WEBHOOK_TOKEN" \
+              && echo "Openship deploy triggered"

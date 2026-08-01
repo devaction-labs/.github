@@ -1,0 +1,8 @@
+{
+  "name": "Deploy to Openship",
+  "description": "Fires an Openship incoming-webhook deploy after this repo's CI validation jobs pass on push to main. Requires OPENSHIP_DEPLOY_WEBHOOK_URL and OPENSHIP_DEPLOY_WEBHOOK_TOKEN repo secrets.",
+  "categories": [
+    "Deployment"
+  ],
+  "filePatterns": []
+}
