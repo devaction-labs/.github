@@ -61,10 +61,10 @@ jobs:
               fi
               ;;
             push)
-              # Escape for jq string; BRANCH_REGEX is used inside test("...")
+              # gh api --jq does not accept jq --arg flags; pipe to jq instead.
               MATCH=$(gh api "repos/${REPO}/commits/${SHA}/pulls" \
-                --jq --arg re "$BRANCH_REGEX" --arg l "$DEPLOY_LABEL" \
-                '[.[] | select(.head.ref | test($re)) | select(any(.labels[].name; . == $l))] | length')
+                | jq --arg re "$BRANCH_REGEX" --arg l "$DEPLOY_LABEL" \
+                  '[.[] | select(.head.ref | test($re)) | select(any(.labels[].name; . == $l))] | length')
               if [ "${MATCH:-0}" -gt 0 ]; then
                 echo "proceed=true" >> "$GITHUB_OUTPUT"
                 echo "Push traces to a merged deploy PR ($BRANCH_REGEX + label $DEPLOY_LABEL) — proceeding."
