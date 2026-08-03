@@ -1,0 +1,27 @@
+# Reusable: require a label on PRs into a base branch (merge gate).
+name: Deploy label check
+
+on:
+  workflow_call:
+    inputs:
+      required_label:
+        type: string
+        default: deploy
+
+jobs:
+  check:
+    name: Require label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required label is present
+        env:
+          REQUIRED: ${{ inputs.required_label }}
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | jq -e --arg l "$REQUIRED" 'index($l)' > /dev/null; then
+            echo "Label '$REQUIRED' present — merge allowed"
+          else
+            echo "PR is missing the '$REQUIRED' label."
+            echo "Add the label to allow merge into the base branch."
+            exit 1
+          fi

@@ -1,0 +1,6 @@
+{
+  "name": "Git-flow branch name",
+  "description": "Require feature/bugfix/hotfix/release/support branch names on PRs to main.",
+  "iconName": "octicon-git-branch",
+  "categories": ["Automation", "Code Scanning"]
+}

@@ -1,0 +1,37 @@
+# Reusable: validate PR head branch against git-flow naming.
+name: Git-flow branch name
+
+on:
+  workflow_call:
+    inputs:
+      regex:
+        description: Bash ERE for allowed branch names
+        type: string
+        default: '^(main|(feature|bugfix|hotfix|release|support)/.+)$'
+      expected_hint:
+        description: Human-readable list of expected patterns
+        type: string
+        default: |
+          main | feature/<name> | bugfix/<name>
+          hotfix/<name> | release/<name> | support/<name>
+
+jobs:
+  validate:
+    name: Branch name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate git-flow branch name
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          REGEX: ${{ inputs.regex }}
+          HINT: ${{ inputs.expected_hint }}
+        run: |
+          if [[ "$BRANCH" =~ $REGEX ]]; then
+            echo "Branch '$BRANCH' matches convention."
+          else
+            echo "Branch '$BRANCH' does NOT match convention."
+            echo
+            echo "Expected:"
+            echo "$HINT"
+            exit 1
+          fi

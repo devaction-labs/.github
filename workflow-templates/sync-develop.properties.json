@@ -1,0 +1,6 @@
+{
+  "name": "Sync main → develop",
+  "description": "After a push to main, merge main into develop via the GitHub API.",
+  "iconName": "octicon-git-merge",
+  "categories": ["Automation", "Continuous Integration"]
+}

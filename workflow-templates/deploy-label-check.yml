@@ -1,0 +1,10 @@
+name: Deploy Label Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  check:
+    uses: devaction-labs/.github/.github/workflows/deploy-label-check.yml@main

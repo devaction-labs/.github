@@ -1,0 +1,6 @@
+{
+  "name": "Deploy label check",
+  "description": "Block merge into main unless the PR has the deploy label.",
+  "iconName": "octicon-tag",
+  "categories": ["Automation", "Deployment"]
+}

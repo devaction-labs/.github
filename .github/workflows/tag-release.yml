@@ -1,0 +1,122 @@
+# Reusable: create annotated tag + GitHub Release after a deploy-gated push to main.
+# Expects the same deploy-gate semantics (merged release/*|hotfix/* PR with label).
+name: Tag & Release
+
+on:
+  workflow_call:
+    inputs:
+      deploy_label:
+        type: string
+        default: deploy
+      branch_regex:
+        type: string
+        default: "^(release|hotfix)/"
+      release_prefix:
+        type: string
+        default: "release/"
+      hotfix_prefix:
+        type: string
+        default: "hotfix/"
+      docker_image:
+        description: Optional image name printed in release notes (e.g. ghcr.io/org/app)
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  tag-and-release:
+    name: Create tag and GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag from release branch version, or bump patch for hotfix
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_LABEL: ${{ inputs.deploy_label }}
+          BRANCH_REGEX: ${{ inputs.branch_regex }}
+          RELEASE_PREFIX: ${{ inputs.release_prefix }}
+          HOTFIX_PREFIX: ${{ inputs.hotfix_prefix }}
+        run: |
+          git fetch --tags
+
+          HEAD_REF=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq --arg re "$BRANCH_REGEX" --arg l "$DEPLOY_LABEL" \
+            '[.[] | select(.head.ref | test($re)) | select(any(.labels[].name; . == $l))] | .[0].head.ref // empty')
+
+          if [ -z "$HEAD_REF" ]; then
+            echo "::error::No merged release/*|hotfix/* PR with label '$DEPLOY_LABEL' for ${{ github.sha }}"
+            exit 1
+          fi
+
+          if [[ "$HEAD_REF" == ${RELEASE_PREFIX}* ]]; then
+            VERSION="${HEAD_REF#${RELEASE_PREFIX}}"
+            if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Release branch '$HEAD_REF' isn't named ${RELEASE_PREFIX}X.Y.Z"
+              exit 1
+            fi
+          elif [[ "$HEAD_REF" == ${HOTFIX_PREFIX}* ]]; then
+            LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
+            if [ -z "$LATEST_TAG" ]; then
+              echo "::error::No existing vX.Y.Z tag to bump for hotfix '$HEAD_REF'"
+              exit 1
+            fi
+            LATEST_VERSION="${LATEST_TAG#v}"
+            MAJOR="${LATEST_VERSION%%.*}"
+            REST="${LATEST_VERSION#*.}"
+            MINOR="${REST%%.*}"
+            PATCH="${REST#*.}"
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "Hotfix '$HEAD_REF' — bumping $LATEST_TAG → v$VERSION"
+          else
+            echo "::error::Branch '$HEAD_REF' is neither release nor hotfix prefix"
+            exit 1
+          fi
+
+          NEW_TAG="v$VERSION"
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $NEW_TAG already exists"
+            exit 1
+          fi
+
+          SHORT=$(git rev-parse --short HEAD)
+          echo "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "$NEW_TAG"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          SHORT="${{ steps.tag.outputs.short }}"
+
+          {
+            if [ -n "$DOCKER_IMAGE" ]; then
+              echo "**Docker image**: \`${DOCKER_IMAGE}:sha-${SHORT}\`"
+              echo
+              echo "---"
+              echo
+            fi
+            gh api -X POST "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="$TAG" \
+              -f target_commitish="${{ github.sha }}" \
+              --jq '.body' 2>/dev/null || true
+          } > /tmp/release-notes.md
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --target "${{ github.sha }}" \
+            --notes-file /tmp/release-notes.md

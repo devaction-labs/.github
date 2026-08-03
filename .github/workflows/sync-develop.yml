@@ -1,0 +1,62 @@
+# Reusable: merge source branch into target (default main → develop) via GitHub API.
+name: Sync branch
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        description: Branch to merge FROM
+        type: string
+        default: main
+      target:
+        description: Branch to merge INTO
+        type: string
+        default: develop
+      commit_message:
+        type: string
+        default: "chore: sync main into develop [skip ci]"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Merge ${{ inputs.source }} into ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Merge via GitHub API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.source }}
+          TARGET: ${{ inputs.target }}
+          MSG: ${{ inputs.commit_message }}
+          REPO: ${{ github.repository }}
+        run: |
+          http_code=$(curl -s -o /tmp/merge-response.json -w "%{http_code}" \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${REPO}/merges" \
+            -d "$(jq -n --arg b "$TARGET" --arg h "$SOURCE" --arg m "$MSG" \
+              '{base:$b, head:$h, commit_message:$m}')")
+
+          case "$http_code" in
+            201)
+              echo "Merged $SOURCE into $TARGET."
+              jq -r '.sha' /tmp/merge-response.json
+              ;;
+            204)
+              echo "$TARGET is already up to date with $SOURCE — nothing to sync."
+              ;;
+            409)
+              echo "::error::Merge conflict syncing $SOURCE into $TARGET. Resolve manually:"
+              echo "  git checkout $TARGET && git pull && git merge origin/$SOURCE"
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected response ($http_code) from the merge API:"
+              cat /tmp/merge-response.json
+              exit 1
+              ;;
+          esac
