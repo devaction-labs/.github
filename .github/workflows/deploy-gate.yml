@@ -3,7 +3,7 @@
 #   jobs:
 #     gate:
 #       uses: devaction-labs/.github/.github/workflows/deploy-gate.yml@v1
-#       permissions: { pull-requests: read }
+#       permissions: { contents: read, pull-requests: read }
 name: Deploy Gate
 
 on:
@@ -23,6 +23,7 @@ on:
         value: ${{ jobs.check.outputs.proceed }}
 
 permissions:
+  contents: read
   pull-requests: read
 
 jobs:
@@ -61,8 +62,14 @@ jobs:
               fi
               ;;
             push)
-              # gh api --jq does not accept jq --arg flags; pipe to jq instead.
-              MATCH=$(gh api "repos/${REPO}/commits/${SHA}/pulls" \
+              # curl -f, not gh api: a refused or empty answer must fail the
+              # step loudly instead of reading as "no deploy PR" and skipping
+              # the release in silence (v0.12.0, 2026-10-22).
+              PULLS=$(curl -fsS \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "${GITHUB_API_URL}/repos/${REPO}/commits/${SHA}/pulls")
+              MATCH=$(printf '%s' "$PULLS" \
                 | jq --arg re "$BRANCH_REGEX" --arg l "$DEPLOY_LABEL" \
                   '[.[] | select(.head.ref | test($re)) | select(any(.labels[].name; . == $l))] | length')
               if [ "${MATCH:-0}" -gt 0 ]; then
