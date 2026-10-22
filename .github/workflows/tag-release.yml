@@ -47,7 +47,13 @@ jobs:
         run: |
           git fetch --tags
 
-          HEAD_REF=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+          # curl -f, not gh api: a refused or empty answer must say why
+          # instead of reading as "no deploy PR" (v0.12.0, 2026-10-22).
+          PULLS=$(curl -fsS \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${{ github.repository }}/commits/${{ github.sha }}/pulls")
+          HEAD_REF=$(printf '%s' "$PULLS" \
             | jq -r --arg re "$BRANCH_REGEX" --arg l "$DEPLOY_LABEL" \
               '[.[] | select(.head.ref | test($re)) | select(any(.labels[].name; . == $l))] | .[0].head.ref // empty')
 
