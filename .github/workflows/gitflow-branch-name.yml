@@ -18,7 +18,7 @@ on:
 jobs:
   validate:
     name: Branch name
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci]
     steps:
       - name: Validate git-flow branch name
         env:

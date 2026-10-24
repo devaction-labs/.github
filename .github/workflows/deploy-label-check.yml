@@ -11,7 +11,7 @@ on:
 jobs:
   check:
     name: Require label
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci]
     steps:
       - name: Verify required label is present
         env:
